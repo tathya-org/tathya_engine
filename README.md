@@ -1,6 +1,6 @@
-# Tathya — Logical Truth Engine for Nepali News
+# तथ्य
 
-Tathya (तथ्य — *fact*) is a news aggregator that analyses articles for logical consistency. When a user opens an article, statements are extracted as implication triples (`p ⇒ q`) and cross-referenced against a knowledge graph of prior assertions. Each statement is scored for how well it agrees or conflicts with the accumulated body of evidence, and highlighted inline in green, red, or grey.
+तथ्य (Tathya) is a news aggregator that analyses articles for logical consistency. When a user opens an article, statements are extracted as implication triples (`p ⇒ q`) and cross-referenced against a knowledge graph of prior assertions. Each statement is scored for how well it agrees or conflicts with the accumulated body of evidence, and highlighted inline in green, red, or grey.
 
 ---
 
