@@ -137,3 +137,41 @@ def get_feed(
             for a in articles
         ],
     }
+
+
+# ------------------------------------------------------------------ tokenize
+
+class TokenizeRequest(BaseModel):
+    headline: str
+    body: str
+
+@app.post("/tokenize")
+def tokenize(body: TokenizeRequest):
+    """
+    Tokenize an article and extract (p, connective, q) statements.
+
+    Example:
+        {
+          "headline": "...",
+          "body": "..."
+        }
+    """
+    from tokenizer import tokenize_article
+    result = tokenize_article(body.headline, body.body)
+    return {
+        "headline":    result.headline,
+        "token_count": result.token_count,
+        "sentences":   result.sentences,
+        "statements": [
+            {
+                "p":          s.p,
+                "connective": s.connective,
+                "conn_type":  s.conn_type,
+                "polarity":   s.polarity,
+                "q":          s.q,
+                "confidence": s.confidence,
+                "sentence":   s.sentence,
+            }
+            for s in result.statements
+        ],
+    }

@@ -132,3 +132,13 @@ def fetch_feed(source: str, limit: int = 20) -> list[Article]:
         ))
 
     return articles
+
+
+# ── tokenization (imported lazily to keep ingestion importable standalone) ──
+
+def tokenize(article: "Article") -> "TokenizedArticle":
+    """
+    Convenience wrapper — tokenize an Article returned by fetch_feed().
+    """
+    from tokenizer import tokenize_article
+    return tokenize_article(article.headline, article.body)
