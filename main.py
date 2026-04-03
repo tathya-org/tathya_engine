@@ -175,3 +175,124 @@ def tokenize(body: TokenizeRequest):
             for s in result.statements
         ],
     }
+
+
+# ------------------------------------------------------------------ analyse
+
+class AnalyseRequest(BaseModel):
+    headline: str = ""
+    body: str
+    source: str = "unknown"
+
+@app.post("/analyse")
+def analyse(req: AnalyseRequest):
+    """
+    Full pipeline for one article:
+
+      1. Tokenize headline + body → sentences + Statement list
+      2. For each Statement:
+           a. Normalise p and q to node keys
+           b. BFS query the triple store for any path p ⇒ q
+           c. If a path exists  → attach bias_score + chain (KNOWN)
+           d. If no path exists → store the triple as a new seed fact (NEW)
+      3. Return per-statement verdicts + an aggregate article bias score
+
+    The aggregate bias is the mean of all known-statement scores.
+    New facts do not contribute to the bias (no prior evidence).
+
+    Example body:
+        {
+          "headline": "Fuel prices rise",
+          "body":     "The fuel price hike caused transport costs to rise.",
+          "source":   "onlinekhabar"
+        }
+    """
+    from tokenizer import tokenize_article
+
+    if not req.body.strip():
+        raise HTTPException(status_code=422, detail="body must not be empty")
+
+    # ── 1. extract statements ────────────────────────────────────────────────
+    tokenized = tokenize_article(req.headline, req.body)
+
+    results = []
+    known_scores = []
+
+    for stmt in tokenized.statements:
+
+        # ── 2. normalise to node keys (basic: lowercase + underscores) ───────
+        p_key = stmt.p.strip().lower().replace(" ", "_")
+        q_key = stmt.q.strip().lower().replace(" ", "_")
+
+        # ── 3. query the triple store ────────────────────────────────────────
+        kb = bfs_query(store, p_key, q_key)
+
+        if kb["known"]:
+            # path found — score it
+            bias = kb["bias_score"]
+            known_scores.append(bias)
+
+            # does the article's polarity agree with the KB?
+            if stmt.polarity == 0:
+                verdict = "hedged"
+            elif bias > 0 and stmt.polarity == 1:
+                verdict = "supported"
+            elif bias < 0 and stmt.polarity == -1:
+                verdict = "supported"
+            else:
+                verdict = "contradicted"
+
+            results.append({
+                "status":     "known",
+                "verdict":    verdict,
+                "p":          stmt.p,
+                "connective": stmt.connective,
+                "conn_type":  stmt.conn_type,
+                "polarity":   stmt.polarity,
+                "q":          stmt.q,
+                "bias_score": round(bias, 4),
+                "paths":      kb["paths"],
+                "sentence":   stmt.sentence,
+            })
+
+        else:
+            # ── 4. no path — ingest as new seed fact ─────────────────────────
+            # hedged statements (polarity=0) are not ingested as hard edges
+            if stmt.polarity != 0:
+                store.assert_triple(
+                    p=p_key,
+                    polarity=stmt.polarity,
+                    q=q_key,
+                    weight=0.5,           # seed weight — lower than corroborated
+                )
+
+            results.append({
+                "status":     "new",
+                "verdict":    "no_prior_data",
+                "p":          stmt.p,
+                "connective": stmt.connective,
+                "conn_type":  stmt.conn_type,
+                "polarity":   stmt.polarity,
+                "q":          stmt.q,
+                "bias_score": None,
+                "paths":      [],
+                "sentence":   stmt.sentence,
+            })
+
+    # ── 5. aggregate bias across known statements ────────────────────────────
+    article_bias = (
+        round(sum(known_scores) / len(known_scores), 4)
+        if known_scores else None
+    )
+
+    return {
+        "headline":        req.headline,
+        "source":          req.source,
+        "token_count":     tokenized.token_count,
+        "sentence_count":  len(tokenized.sentences),
+        "statement_count": len(results),
+        "known_count":     len(known_scores),
+        "new_count":       len(results) - len(known_scores),
+        "article_bias":    article_bias,
+        "statements":      results,
+    }
