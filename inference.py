@@ -1,9 +1,9 @@
 from collections import deque
-from store import TripleStore
+from store import TripleStore, normalise
 
 
 def _normalise(term: str) -> str:
-    return term.strip().lower().replace(" ", "_")
+    return normalise(term)
 
 
 def bfs_query(store: TripleStore, p: str, q: str, max_depth: int = 5) -> dict:

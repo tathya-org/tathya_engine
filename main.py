@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, field_validator
-from store import TripleStore
+from store import TripleStore, normalise
 from inference import bfs_query
 from ingestion import fetch_feed, RSS_FEEDS
 
@@ -56,6 +56,7 @@ def root():
             "GET  /triples": "dump all asserted triples",
             "GET  /feed":    "fetch articles from an RSS source",
             "GET  /sources": "list available RSS sources",
+            "POST /extract": "extract connectives + statements via NLP",
         }
     }
 
@@ -170,6 +171,7 @@ def tokenize(body: TokenizeRequest):
                 "polarity":   s.polarity,
                 "q":          s.q,
                 "confidence": s.confidence,
+                "method":     s.method,
                 "sentence":   s.sentence,
             }
             for s in result.statements
@@ -177,12 +179,60 @@ def tokenize(body: TokenizeRequest):
     }
 
 
-# ------------------------------------------------------------------ analyse
+# ------------------------------------------------------------------ extract
 
 class AnalyseRequest(BaseModel):
     headline: str = ""
     body: str
     source: str = "unknown"
+
+@app.post("/extract")
+def extract(req: AnalyseRequest):
+    """
+    Extract connectives and statements from article text using NLP.
+
+    Returns structured (p, connective, q) triples with dependency-parse
+    metadata.  Uses spaCy dep-parse for English text and falls back to
+    the regex pipeline for Nepali text.
+
+    Example body:
+        {
+          "headline": "Fuel prices rise",
+          "body":     "The fuel price hike caused transport costs to rise.",
+          "source":   "onlinekhabar"
+        }
+    """
+    from tokenizer import tokenize_article
+
+    if not req.body.strip():
+        raise HTTPException(status_code=422, detail="body must not be empty")
+
+    tokenized = tokenize_article(req.headline, req.body)
+
+    return {
+        "headline":        req.headline,
+        "source":          req.source,
+        "token_count":     tokenized.token_count,
+        "sentence_count":  len(tokenized.sentences),
+        "statement_count": len(tokenized.statements),
+        "statements": [
+            {
+                "p":          s.p,
+                "connective": s.connective,
+                "conn_type":  s.conn_type,
+                "polarity":   s.polarity,
+                "q":          s.q,
+                "confidence": s.confidence,
+                "method":     s.method,
+                "dep_rel":    getattr(s, 'dep_rel', ''),
+                "sentence":   s.sentence,
+            }
+            for s in tokenized.statements
+        ],
+    }
+
+
+# ------------------------------------------------------------------ analyse
 
 @app.post("/analyse")
 def analyse(req: AnalyseRequest):
@@ -221,8 +271,8 @@ def analyse(req: AnalyseRequest):
     for stmt in tokenized.statements:
 
         # ── 2. normalise to node keys (basic: lowercase + underscores) ───────
-        p_key = stmt.p.strip().lower().replace(" ", "_")
-        q_key = stmt.q.strip().lower().replace(" ", "_")
+        p_key = normalise(stmt.p)
+        q_key = normalise(stmt.q)
 
         # ── 3. query the triple store ────────────────────────────────────────
         kb = bfs_query(store, p_key, q_key)
@@ -251,6 +301,7 @@ def analyse(req: AnalyseRequest):
                 "polarity":   stmt.polarity,
                 "q":          stmt.q,
                 "bias_score": round(bias, 4),
+                "method":     stmt.method,
                 "paths":      kb["paths"],
                 "sentence":   stmt.sentence,
             })
@@ -275,6 +326,7 @@ def analyse(req: AnalyseRequest):
                 "polarity":   stmt.polarity,
                 "q":          stmt.q,
                 "bias_score": None,
+                "method":     stmt.method,
                 "paths":      [],
                 "sentence":   stmt.sentence,
             })

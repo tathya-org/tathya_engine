@@ -460,5 +460,46 @@ class TestAnalyse(unittest.TestCase):
         self.assertIsNone(data["article_bias"])
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# /extract
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestExtract(unittest.TestCase):
+
+    def test_extract_english_using_spacy(self):
+        r = client.post("/extract", json={
+            "headline": "Fuel prices",
+            "body": "The fuel price hike caused transport costs to rise.",
+        })
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["headline"], "Fuel prices")
+        self.assertEqual(data["statement_count"], 1)
+        
+        stmt = data["statements"][0]
+        self.assertEqual(stmt["p"], "The fuel price hike")
+        self.assertEqual(stmt["connective"], "caused")
+        self.assertEqual(stmt["q"], "transport costs to rise")
+        self.assertEqual(stmt["method"], "spacy_dep")
+        self.assertIn("root_verb", stmt["dep_rel"])
+
+    def test_extract_nepali_falls_back_to_regex(self):
+        r = client.post("/extract", json={
+            "headline": "इन्धन",
+            "body": "इन्धन मूल्य बढेको कारणले यातायात भाडा बढ्यो।",
+        })
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["statement_count"], 1)
+        
+        stmt = data["statements"][0]
+        self.assertEqual(stmt["connective"], "कारणले")
+        self.assertEqual(stmt["method"], "regex")
+
+    def test_extract_empty_body_rejected(self):
+        r = client.post("/extract", json={"headline": "Test", "body": "   "})
+        self.assertEqual(r.status_code, 422)
+
+
 if __name__ == "__main__":
     unittest.main()

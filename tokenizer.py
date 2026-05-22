@@ -187,6 +187,7 @@ class Statement:
     polarity:   int            # +1 / -1 / 0
     q:          str            # consequent text
     confidence: float = 1.0   # 1.0 for explicit, lower for hedged
+    method:     str = "regex"  # extraction method: "regex", "regex_fallback", "spacy_dep"
 
 
 def _split_arguments(sentence: str, match: ConnectiveMatch) -> tuple[str, str]:
@@ -273,7 +274,19 @@ def extract_statement(sentence: str) -> Optional[Statement]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 5.  ARTICLE-LEVEL PIPELINE
+# 5.  LANGUAGE DETECTION HELPER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_DEVANAGARI_RE = re.compile(r'[\u0900-\u097F]')
+
+
+def _is_devanagari(text: str) -> bool:
+    """True if text contains any Devanagari characters (Nepali/Hindi)."""
+    return bool(_DEVANAGARI_RE.search(text))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 6.  ARTICLE-LEVEL PIPELINE  (hybrid: NLP + regex fallback)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @dataclass
@@ -284,12 +297,47 @@ class TokenizedArticle:
     token_count: int
 
 
+def _extract_hybrid(sentence: str) -> Optional[Statement]:
+    """
+    Hybrid extraction for a single sentence:
+
+      1. If the sentence is Devanagari → regex pipeline only
+      2. Otherwise → try spaCy NLP extractor first
+      3. Fall back to regex if NLP returns nothing
+
+    Returns the first Statement found, or None.
+    """
+    # Devanagari text → regex only (no spaCy Nepali dep parser exists)
+    if _is_devanagari(sentence):
+        stmt = extract_statement(sentence)
+        if stmt:
+            stmt.method = "regex"
+        return stmt
+
+    # English text → try NLP first
+    try:
+        from nlp_extractor import extract_statements_nlp, is_available
+        if is_available():
+            nlp_stmts = extract_statements_nlp(sentence)
+            if nlp_stmts:
+                return nlp_stmts[0]   # best match from dep-parse
+    except ImportError:
+        pass
+
+    # Fallback → regex pipeline
+    stmt = extract_statement(sentence)
+    if stmt:
+        stmt.method = "regex_fallback"
+    return stmt
+
+
 def tokenize_article(headline: str, body: str) -> TokenizedArticle:
     """
     Full pipeline for one article:
       1. Sentence-tokenize headline + body
       2. Word-tokenize each sentence (for token count)
       3. Run connective detector + argument splitter on each sentence
+         — uses spaCy NLP for English, regex for Nepali, with fallback
       4. Return structured result
 
     Headline is prepended as its own sentence so it is also
@@ -305,7 +353,7 @@ def tokenize_article(headline: str, body: str) -> TokenizedArticle:
         tokens = word_tokenize(sent)
         all_tokens.extend(tokens)
 
-        stmt = extract_statement(sent)
+        stmt = _extract_hybrid(sent)
         if stmt:
             statements.append(stmt)
 

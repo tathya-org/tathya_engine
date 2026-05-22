@@ -18,9 +18,14 @@ URI_POLARITY = {
 }
 
 
+def normalise(term: str) -> str:
+    """Slugify a noun/clause, stripping leading/trailing punctuation and spaces."""
+    return term.strip(".,;:?!।॥ \t\n").strip().lower().replace(" ", "_")
+
+
 def _node(term: str) -> URIRef:
     """Slugify a normalised noun into a URI."""
-    slug = term.strip().lower().replace(" ", "_")
+    slug = normalise(term)
     return TATHYA[slug]
 
 
