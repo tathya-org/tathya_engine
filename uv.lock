@@ -1190,7 +1190,6 @@ dependencies = [
     { name = "pytesseract" },
     { name = "requests" },
     { name = "sentencepiece" },
-    { name = "sklearn" },
     { name = "snowballstemmer" },
     { name = "spello" },
     { name = "tensorboardx" },
@@ -2426,11 +2425,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
 ]
 
-[[package]]
-name = "sklearn"
-version = "0.0.post12"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/46/1c/395a83ee7b2d2ad7a05b453872053d41449564477c81dc356f720b16eac4/sklearn-0.0.post12.tar.gz", hash = "sha256:54cff9e20839b7b202321178228af4d9388bedf78425d9299fd9ee170d68802e", size = 2578, upload-time = "2023-12-01T14:30:39.945Z" }
 
 [[package]]
 name = "smart-open"
